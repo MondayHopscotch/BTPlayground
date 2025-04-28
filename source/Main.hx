@@ -1,12 +1,14 @@
 package;
 
+#if debug
 import bitdecay.flixel.debug.DebugSuite;
 import bitdecay.flixel.debug.tools.btree.BTreeInspector;
+import openfl.events.KeyboardEvent;
+import openfl.ui.Keyboard;
+#end
 import flixel.FlxG;
 import flixel.FlxGame;
 import openfl.display.Sprite;
-import openfl.events.KeyboardEvent;
-import openfl.ui.Keyboard;
 
 class Main extends Sprite
 {

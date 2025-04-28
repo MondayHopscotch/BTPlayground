@@ -157,7 +157,7 @@ class Buddy extends FlxSprite
 			new Sequence(IN_ORDER, [
 				new IsVarNull('desire'),
 				new StatusAction("checkWater", BT.wrapFn(isThirsty)),
-				new SetVariable('desire', ResType.WATER)
+				new SetVariable('desire', CONST(ResType.WATER))
 			]),
 			new Sequence(IN_ORDER, [
 				new IsVarNull('desire'),
@@ -169,7 +169,7 @@ class Buddy extends FlxSprite
 					}
 					return FAIL;
 				})),
-				new SetVariable('desire', ResType.FOOD)
+				new SetVariable('desire', CONST(ResType.FOOD))
 			]),
 			new Selector(IN_ORDER, [
 				new Sequence(IN_ORDER, [
@@ -210,7 +210,9 @@ class Buddy extends FlxSprite
 			new Wait(CONST(1))
 		])));
 		bt.init(ctx);
+		#if debug
 		DebugSuite.ME.getTool(BTreeInspector).addTree('buddy', bt);
+		#end
 		// @formatter:on
 	}
 }
