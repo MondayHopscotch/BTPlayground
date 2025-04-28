@@ -3,6 +3,8 @@ package;
 import entities.Buddy;
 import entities.Resource;
 import flixel.FlxG;
+import flixel.FlxObject;
+import flixel.FlxSprite;
 import flixel.FlxState;
 
 class PlayState extends FlxState
@@ -10,6 +12,8 @@ class PlayState extends FlxState
 	public static var ME:PlayState;
 
 	var buddy:Buddy;
+	var food:Resource;
+	var water:Resource;
 
 	public function new()
 	{
@@ -21,9 +25,11 @@ class PlayState extends FlxState
 	{
 		super.create();
 		buddy = new Buddy(FlxG.width / 2, FlxG.height / 2);
-		var food = new Resource(FOOD, 10, FlxG.height - 32);
-		var water = new Resource(WATER, FlxG.width - 30, 10);
-		
+		food = new Resource(FOOD, FlxG.width / 3, FlxG.height * .66);
+		food.immovable = true;
+		water = new Resource(WATER, FlxG.width * .66, FlxG.height / 3);
+		water.immovable = true;
+
 		add(buddy);
 		add(food);
 		add(water);
@@ -32,5 +38,27 @@ class PlayState extends FlxState
 	override public function update(elapsed:Float)
 	{
 		super.update(elapsed);
+
+		FlxG.overlap(buddy, water, FlxObject.separate, (b, w) ->
+		{
+			buddy.water += 10;
+			return true;
+		});
+		FlxG.overlap(buddy, food, FlxObject.separate, (b, f) ->
+		{
+			buddy.food += 25;
+			return true;
+		});
+	}
+
+	public function findObjects(type:ResType):Array<Resource>
+	{
+		switch (type)
+		{
+			case WATER:
+				return [water];
+			case FOOD:
+				return [food];
+		}
 	}
 }
