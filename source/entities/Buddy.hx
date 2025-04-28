@@ -30,6 +30,7 @@ import flixel.math.FlxPoint;
 import flixel.math.FlxVelocity;
 import flixel.tweens.FlxTween;
 import flixel.util.FlxColor;
+import flixel.util.FlxTimer;
 
 class Buddy extends FlxSprite
 {
@@ -41,6 +42,8 @@ class Buddy extends FlxSprite
 
 	var foodDrainRate:Float = 2.5;
 	var waterDrainRate:Float = 5;
+
+	var interacting = false;
 
 	var bt:BTExecutor;
 	var ctx:BTContext;
@@ -78,6 +81,30 @@ class Buddy extends FlxSprite
 		return FAIL;
 	}
 
+	function startInteraction(ctx:BTContext)
+	{
+		var res:Resource = ctx.get('resource');
+		if (res == null)
+		{
+			interacting = false;
+			return;
+		}
+
+		interacting = true;
+		// simulate interaction while we have no animations
+		FlxTimer.wait(1, () ->
+		{
+			switch (res.type)
+			{
+				case ResType.WATER:
+					water += 40;
+				case ResType.FOOD:
+					food += 50;
+			}
+			interacting = false;
+		});
+	}
+
 	function initBehavior()
 	{
 		var findTree = new Sequence(IN_ORDER, [
@@ -110,6 +137,8 @@ class Buddy extends FlxSprite
 					if (this.overlaps(target))
 					{
 						ctx.remove('target');
+						ctx.set('resource', target);
+						velocity.set();
 						return SUCCESS;
 					}
 					else
@@ -123,6 +152,7 @@ class Buddy extends FlxSprite
 
 		Registry.register('findDesiredObject', findTree);
 
+		 // @formatter:off
 		bt = new BTExecutor(new Repeater(FOREVER, new Selector(IN_ORDER, [
 			new Sequence(IN_ORDER, [
 				new IsVarNull('desire'),
@@ -142,23 +172,36 @@ class Buddy extends FlxSprite
 				new SetVariable('desire', ResType.FOOD)
 			]),
 			new Selector(IN_ORDER, [
-				new Sequence(IN_ORDER, [new Inverter(new IsVarNull('desire')), new Subtree('findDesiredObject')]),
-				new Inverter(new TimeLimit(CONST(1.5), new StatusAction("chaseMouse", BT.wrapFn((ctx, delta) ->
-				{
-					var mp = FlxG.mouse.getWorldPosition();
-					var p = getGraphicMidpoint().subtract(mp);
-					if (p.length > 32)
-					{
-						velocity.copyFrom(p).scale(-1).normalize().scale(200);
-					}
-					else
-					{
-						velocity.set();
-					}
-					mp.put();
-					p.put();
-					return RUNNING;
-				})))),
+				new Sequence(IN_ORDER, [
+					new Inverter(new IsVarNull('desire')),
+					new Subtree('findDesiredObject'),
+					new Inverter(new IsVarNull('resource')),
+					new Action(BT.wrapFn(startInteraction)),
+					new StatusAction('waitForInteractionFinish', BT.wrapFn((ctx, delta) -> {
+						if (interacting) {
+							return RUNNING;
+						}
+
+						return SUCCESS;
+					}))
+				]),
+				new Inverter(
+					new TimeLimit(CONST(1.5),
+					new StatusAction("chaseMouse", BT.wrapFn((ctx, delta) -> {
+						var mp = FlxG.mouse.getWorldPosition();
+						var p = getGraphicMidpoint().subtract(mp);
+						if (p.length > 32)
+						{
+							velocity.copyFrom(p).scale(-1).normalize().scale(200);
+						}
+						else
+						{
+							velocity.set();
+						}
+						mp.put();
+						p.put();
+						return RUNNING;
+					})))),
 				new Action("stopVelocity", BT.wrapFn((ctx) ->
 				{
 					this.velocity.set();
@@ -168,5 +211,6 @@ class Buddy extends FlxSprite
 		])));
 		bt.init(ctx);
 		DebugSuite.ME.getTool(BTreeInspector).addTree('buddy', bt);
+		// @formatter:on
 	}
 }

@@ -5,7 +5,7 @@ import flixel.util.FlxColor;
 
 class Resource extends FlxSprite
 {
-	var type:ResType;
+	public var type:ResType;
 
 	public function new(type:ResType, X:Float, Y:Float)
 	{

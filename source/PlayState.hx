@@ -38,17 +38,6 @@ class PlayState extends FlxState
 	override public function update(elapsed:Float)
 	{
 		super.update(elapsed);
-
-		FlxG.overlap(buddy, water, FlxObject.separate, (b, w) ->
-		{
-			buddy.water += 10;
-			return true;
-		});
-		FlxG.overlap(buddy, food, FlxObject.separate, (b, f) ->
-		{
-			buddy.food += 25;
-			return true;
-		});
 	}
 
 	public function findObjects(type:ResType):Array<Resource>
