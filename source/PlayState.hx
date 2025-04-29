@@ -36,10 +36,14 @@ class PlayState extends FlxState
 		buddy = new Buddy(FlxG.width / 2, FlxG.height / 2);
 		var food = new Resource(FOOD, 16 * 10, 16 * 30);
 		food.immovable = true;
+		resources.add(food);
+
 		var water = new Resource(WATER, 32, 32);
 		water.immovable = true;
+		resources.add(water);
 
-		resources.add(food);
+		water = new Resource(WATER, 16 * 20, 16 * 20);
+		water.immovable = true;
 		resources.add(water);
 
 		add(tilemap);

@@ -201,19 +201,12 @@ class Buddy extends FlxSprite
 		bt = new BTExecutor(new Repeater(FOREVER, new Selector(IN_ORDER, [
 			new Sequence(IN_ORDER, [
 				new IsVarNull('desire'),
-				new StatusAction("checkWater", BT.wrapFn(isThirsty)),
+				new Condition("checkThirsty", VAR_CMP(WATER, LT(50))),
 				new SetVariable('desire', CONST(ResType.WATER))
 			]),
 			new Sequence(IN_ORDER, [
 				new IsVarNull('desire'),
-				new StatusAction("checkFood", BT.wrapFn((ctx, delta) ->
-				{
-					if (ctx.get(FOOD) < 50)
-					{
-						return SUCCESS;
-					}
-					return FAIL;
-				})),
+				new Condition("checkHungry", VAR_CMP(FOOD, LT(50))),
 				new SetVariable('desire', CONST(ResType.FOOD))
 			]),
 			new Selector(IN_ORDER, [
