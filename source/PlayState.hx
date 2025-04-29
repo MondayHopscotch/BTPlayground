@@ -6,14 +6,20 @@ import flixel.FlxG;
 import flixel.FlxObject;
 import flixel.FlxSprite;
 import flixel.FlxState;
+import flixel.addons.editors.ogmo.FlxOgmo3Loader;
+import flixel.group.FlxGroup.FlxTypedGroup;
+import flixel.math.FlxPoint;
+import flixel.tile.FlxTilemap;
+import utils.CollisionUtils;
 
 class PlayState extends FlxState
 {
 	public static var ME:PlayState;
 
+	var tilemap:FlxTilemap;
 	var buddy:Buddy;
-	var food:Resource;
-	var water:Resource;
+
+	var resources = new FlxTypedGroup<Resource>();
 
 	public function new()
 	{
@@ -23,31 +29,52 @@ class PlayState extends FlxState
 
 	override public function create()
 	{
+		var loader = new FlxOgmo3Loader(AssetPaths.world__ogmo, AssetPaths.first__json);
+		tilemap = loader.loadTilemap(AssetPaths.tiles__png, "walls");
+
 		super.create();
 		buddy = new Buddy(FlxG.width / 2, FlxG.height / 2);
-		food = new Resource(FOOD, FlxG.width / 3, FlxG.height * .66);
+		var food = new Resource(FOOD, 16 * 10, 16 * 30);
 		food.immovable = true;
-		water = new Resource(WATER, FlxG.width * .66, FlxG.height / 3);
+		var water = new Resource(WATER, 32, 32);
 		water.immovable = true;
 
+		resources.add(food);
+		resources.add(water);
+
+		add(tilemap);
 		add(buddy);
-		add(food);
-		add(water);
+		add(resources);
+	}
+
+	public function pathBetween(a:FlxObject, b:FlxObject):Array<FlxPoint>
+	{
+		var path = tilemap.findPath(a.getPosition(), b.getMidpoint());
+		return path;
 	}
 
 	override public function update(elapsed:Float)
 	{
 		super.update(elapsed);
+
+		CollisionUtils.piecewiseCollide(tilemap, buddy);
+		CollisionUtils.piecewiseCollide(buddy, resources, (b, r) ->
+		{
+			buddy.touched(r);
+		});
 	}
 
 	public function findObjects(type:ResType):Array<Resource>
 	{
-		switch (type)
+		var found:Array<Resource> = [];
+		for (r in resources)
 		{
-			case WATER:
-				return [water];
-			case FOOD:
-				return [food];
+			if (r.type == type)
+			{
+				found.push(r);
+			}
 		}
+
+		return found;
 	}
 }

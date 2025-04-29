@@ -1,33 +1,14 @@
 package entities;
 
-import bitdecay.behavior.tree.BT;
-import bitdecay.behavior.tree.BTExecutor;
-import bitdecay.behavior.tree.NodeStatus;
-import bitdecay.behavior.tree.Registry;
-import bitdecay.behavior.tree.composite.Selector;
-import bitdecay.behavior.tree.composite.Sequence;
-import bitdecay.behavior.tree.context.BTContext;
-import bitdecay.behavior.tree.decorator.Inverter;
-import bitdecay.behavior.tree.decorator.Repeater;
-import bitdecay.behavior.tree.decorator.Subtree;
-import bitdecay.behavior.tree.decorator.Succeeder;
-import bitdecay.behavior.tree.decorator.TimeLimit;
-import bitdecay.behavior.tree.leaf.Action;
-import bitdecay.behavior.tree.leaf.IsVarNull;
-import bitdecay.behavior.tree.leaf.RemoveVariable;
-import bitdecay.behavior.tree.leaf.SetVariable;
-import bitdecay.behavior.tree.leaf.StatusAction;
-import bitdecay.behavior.tree.leaf.Success;
-import bitdecay.behavior.tree.leaf.Wait;
 import bitdecay.flixel.debug.DebugSuite;
-import bitdecay.flixel.debug.tools.btree.BTreeInspector;
-import bitdecay.flixel.debug.tools.btree.BTreeVisualizer;
+import bitdecay.flixel.debug.tools.btree.*;
 import entities.Resource.ResType;
 import flixel.FlxG;
 import flixel.FlxObject;
 import flixel.FlxSprite;
 import flixel.math.FlxPoint;
 import flixel.math.FlxVelocity;
+import flixel.path.FlxPath;
 import flixel.tweens.FlxTween;
 import flixel.util.FlxColor;
 import flixel.util.FlxTimer;
@@ -40,8 +21,8 @@ class Buddy extends FlxSprite
 	public var food:Float = 70;
 	public var water:Float = 70;
 
-	var foodDrainRate:Float = 2.5;
-	var waterDrainRate:Float = 5;
+	var foodDrainRate:Float = 1;
+	var waterDrainRate:Float = 1.5;
 
 	var interacting = false;
 
@@ -51,12 +32,13 @@ class Buddy extends FlxSprite
 	public function new(X:Float, Y:Float)
 	{
 		super(X, Y);
-		makeGraphic(32, 32, FlxColor.YELLOW);
+		makeGraphic(16, 16, FlxColor.YELLOW);
 		ctx = new BTContext();
 		initBehavior();
 
 		FlxG.watch.add(this, "food", "pFood:");
 		FlxG.watch.add(this, "water", "pWater:");
+		FlxG.watch.add(this, "velocity", "velocity");
 	}
 
 	override function update(elapsed:Float)
@@ -70,6 +52,15 @@ class Buddy extends FlxSprite
 		bt.ctx.set(WATER, water);
 
 		bt.process(elapsed);
+	}
+
+	override function draw()
+	{
+		super.draw();
+		if (path != null)
+		{
+			path.drawDebugOnCamera(camera);
+		}
 	}
 
 	function isThirsty(ctx:BTContext, delta:Float):NodeStatus
@@ -105,8 +96,79 @@ class Buddy extends FlxSprite
 		});
 	}
 
+	public function touched(r:FlxObject)
+	{
+		if (currentTarget == r)
+		{
+			bt.ctx.set('resource', r);
+
+			if (path != null)
+			{
+				path.cancel();
+				path = null;
+				pathSuccess = true;
+			}
+		}
+	}
+
+	var currentTarget:FlxObject;
+	var pathSuccess = false;
+
+	function moveToTarget(ctx:BTContext, delta:Float):NodeStatus
+	{
+		var target:FlxSprite = cast ctx.get('target');
+		if (target == null)
+		{
+			if (path != null && !path.finished)
+			{
+				path.cancel();
+			}
+			return FAIL;
+		}
+		else if (currentTarget != target)
+		{
+			if (path != null && !path.finished)
+			{
+				path.cancel();
+			}
+
+			currentTarget = target;
+			var points = PlayState.ME.pathBetween(this, target);
+			if (points == null)
+			{
+				// can't get there
+				return FAIL;
+			}
+
+			this.path = new FlxPath(points);
+			path.start(points, 200);
+		}
+
+		if (path != null)
+		{
+			if (path.finished)
+			{
+				currentTarget = null;
+				ctx.remove('target');
+				return SUCCESS;
+			}
+
+			return RUNNING;
+		}
+
+		if (path == null && pathSuccess)
+		{
+			currentTarget = null;
+			ctx.remove('target');
+			return SUCCESS;
+		}
+
+		return FAIL;
+	}
+
 	function initBehavior()
 	{
+		// @formatter:off
 		var findTree = new Sequence(IN_ORDER, [
 			new Inverter(new IsVarNull('desire')),
 			new Action("setObjectsFromDesire", BT.wrapFn((ctx) ->
@@ -129,30 +191,13 @@ class Buddy extends FlxSprite
 					ctx.remove('objects');
 					return FAIL;
 				})),
-				new StatusAction("moveToTarget", BT.wrapFn((ctx, _) ->
-				{
-					var target:FlxSprite = cast ctx.get('target');
-					FlxVelocity.moveTowardsObject(this, target, 200);
-
-					if (this.overlaps(target))
-					{
-						ctx.remove('target');
-						ctx.set('resource', target);
-						velocity.set();
-						return SUCCESS;
-					}
-					else
-					{
-						return RUNNING;
-					}
-				})),
+				new StatusAction("moveToTarget", BT.wrapFn(moveToTarget)),
 				new RemoveVariable('desire')
 			]))
 		]);
 
 		Registry.register('findDesiredObject', findTree);
 
-		 // @formatter:off
 		bt = new BTExecutor(new Repeater(FOREVER, new Selector(IN_ORDER, [
 			new Sequence(IN_ORDER, [
 				new IsVarNull('desire'),
@@ -182,6 +227,7 @@ class Buddy extends FlxSprite
 							return RUNNING;
 						}
 
+						ctx.remove('resource');
 						return SUCCESS;
 					}))
 				]),
