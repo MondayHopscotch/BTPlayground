@@ -24,6 +24,8 @@ class Buddy extends FlxSprite
 	var foodDrainRate:Float = 1;
 	var waterDrainRate:Float = 1.5;
 
+	var pathTarget:FlxObject = null;
+	var resourceTimer:FlxTimer = null;
 	var interacting = false;
 
 	var bt:BTExecutor;
@@ -140,6 +142,7 @@ class Buddy extends FlxSprite
 				return FAIL;
 			}
 
+			pathTarget = target;
 			this.path = new FlxPath(points);
 			path.start(points, 200);
 		}
@@ -148,6 +151,7 @@ class Buddy extends FlxSprite
 		{
 			if (path.finished)
 			{
+				ctx.set('resource', currentTarget);
 				currentTarget = null;
 				ctx.remove('target');
 				return SUCCESS;
@@ -169,6 +173,83 @@ class Buddy extends FlxSprite
 	function initBehavior()
 	{
 		// @formatter:off
+		// tree to find a target object
+		var getTarget = new Selector(IN_ORDER, [
+			new Condition("hasTarget", VAR_SET('target')),
+			new StatusAction("setClosestTarget", BT.wrapFn((ctx, delta) ->
+			{
+				var desire:ResType = cast ctx.get('desire');
+				var objs = PlayState.ME.findObjects(desire);
+
+				if (objs.length == 0) {
+					// no resource to target
+					return FAIL;
+				}
+
+				// find closest
+				var minPathLength = Math.POSITIVE_INFINITY;
+				var target:Resource = null;
+				var points:Array<FlxPoint> = null;
+				for (resource in objs) {
+					var pathPoints = PlayState.ME.pathBetween(this, resource);
+					var len = 0.0;
+					var lastPoint:FlxPoint = null;
+					for (p in pathPoints) {
+						if (lastPoint == null) {
+							lastPoint = p;
+							continue;
+						}
+
+						len += p.distanceTo(lastPoint);
+						lastPoint = p;
+					}
+
+					if (len < minPathLength) {
+						minPathLength = len;
+						points = pathPoints;
+						target = resource;
+					}
+				}
+
+				if (minPathLength != Math.POSITIVE_INFINITY) {
+					ctx.set('target', target);
+
+					// this isn't strictly necessary, but since we already computed it, set it aside for later
+					ctx.set('targetPath', points);
+					return SUCCESS;
+				}
+
+				// no resource is reachable
+				return FAIL;
+			})),
+		]);
+
+		Registry.register('findATarget', getTarget);
+
+		// tree to get close to target object
+		var approachTarget = new Selector(IN_ORDER, [
+			new Condition("nearTarget", FUNC(BT.wrapFn((ctx) -> {
+				var target:Resource = ctx.get('target');
+				if (target.overlaps(this)) {
+					ctx.set('resource', target);
+					return true;
+				}
+				// if (target != null && getPosition().dist(target.getPosition()) < 32) {
+				// 	ctx.set('resource', target);
+				// 	return true;
+				// };
+				return false;
+			}))),
+			new StatusAction(BT.wrapFn(moveToTarget), BT.wrapFn((ctx) -> path.cancel()))
+		]);
+
+		Registry.register('approachTarget', approachTarget);
+
+		// tree to interact with desire
+		var interactWithTarget = new Success();
+
+		Registry.register('interactWithTarget', approachTarget);
+
 		var findTree = new Sequence(IN_ORDER, [
 			new Inverter(new IsVarNull('desire')),
 			new Action("setObjectsFromDesire", BT.wrapFn((ctx) ->
@@ -198,35 +279,87 @@ class Buddy extends FlxSprite
 
 		Registry.register('findDesiredObject', findTree);
 
-		bt = new BTExecutor(new Repeater(FOREVER, new Selector(IN_ORDER, [
-			new Sequence(IN_ORDER, [
-				new IsVarNull('desire'),
-				new Condition("checkThirsty", VAR_CMP(WATER, LT(50))),
-				new SetVariable('desire', CONST(ResType.WATER))
-			]),
-			new Sequence(IN_ORDER, [
-				new IsVarNull('desire'),
-				new Condition("checkHungry", VAR_CMP(FOOD, LT(50))),
-				new SetVariable('desire', CONST(ResType.FOOD))
-			]),
-			new Selector(IN_ORDER, [
-				new Sequence(IN_ORDER, [
-					new Inverter(new IsVarNull('desire')),
-					new Subtree('findDesiredObject'),
-					new Inverter(new IsVarNull('resource')),
-					new Action(BT.wrapFn(startInteraction)),
-					new StatusAction('waitForInteractionFinish', BT.wrapFn((ctx, delta) -> {
-						if (interacting) {
-							return RUNNING;
+		var consumeResource = new Sequence(IN_ORDER, [
+			new Subtree('findATarget'),
+			new Subtree('approachTarget'),
+			new StatusAction('consume', BT.wrapFn((ctx, delta) -> {
+				var res:Resource = ctx.get('resource');
+				if (res == null)
+				{
+					// no target to interact with, or it was removed
+					// TODO: This does not gracefully handle if the target is removed
+					// abruptly. How to address this?
+					interacting = false;
+					return FAIL;
+				}
+
+				if (!interacting) {
+					// start interaction
+					interacting = true;
+					res.kill();
+					if (resourceTimer != null) {
+						resourceTimer.cancel();
+					}
+					resourceTimer = FlxTimer.loop(.5, (loop) -> {
+						trace('timerLoops: ${loop}');
+						if (!interacting) {
+							resourceTimer.cancel();
+							return;
 						}
 
-						ctx.remove('resource');
-						return SUCCESS;
-					}))
-				]),
-				new Inverter(
-					new TimeLimit(CONST(1.5),
-					new StatusAction("chaseMouse", BT.wrapFn((ctx, delta) -> {
+						switch (res.type) {
+							case ResType.WATER:
+								water += 10;
+							case ResType.FOOD:
+								food += 12;
+						}
+						if (loop == 5) {
+							interacting = false;
+						}
+					}, 5);
+				}
+
+				if (interacting) {
+					return RUNNING;
+				}
+
+				ctx.remove('desire');
+				ctx.remove('target');
+				ctx.remove('resource');
+				return SUCCESS;
+			}), BT.wrapFn((ctx) -> {
+				interacting = false;
+				ctx.remove('desire');
+				ctx.remove('target');
+				ctx.remove('resource');
+				if (resourceTimer != null) {
+					resourceTimer.cancel();
+				}
+			}))
+		]);
+
+		Registry.register('consumeResource', consumeResource);
+
+		bt = new BTExecutor(new Repeater(FOREVER, new Sequence(IN_ORDER, [
+			new Selector(IN_ORDER, [
+				new Condition("notThirsty", VAR_CMP(WATER, GT(50))),
+				new Sequence(IN_ORDER, [
+					new SetVariable('desire', CONST(ResType.WATER)),
+					new HierarchicalContext(new Subtree('consumeResource'))
+				])
+			]),
+			new Selector(IN_ORDER, [
+				new Condition("notHungry", VAR_CMP(FOOD, GT(50))),
+				new Sequence(IN_ORDER, [
+					new SetVariable('desire', CONST(ResType.FOOD)),
+					new HierarchicalContext(new Subtree('consumeResource'))
+				])
+			]),
+			new Selector(IN_ORDER, [
+				new Condition("atMouse", FUNC(BT.wrapFn((ctx) -> {
+					return getPosition().dist(FlxG.mouse.getWorldPosition()) < 32;
+				}))),
+				new StatusAction("chaseMouse", BT.wrapFn((ctx, delta) -> {
 						var mp = FlxG.mouse.getWorldPosition();
 						var p = getGraphicMidpoint().subtract(mp);
 						if (p.length > 32)
@@ -240,13 +373,8 @@ class Buddy extends FlxSprite
 						mp.put();
 						p.put();
 						return RUNNING;
-					})))),
-				new Action("stopVelocity", BT.wrapFn((ctx) ->
-				{
-					this.velocity.set();
-				}))
+					}), BT.wrapFn((ctx) -> {velocity.set();}))
 			]),
-			new Wait(CONST(1))
 		])));
 		bt.init(ctx);
 		#if debug

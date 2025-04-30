@@ -53,7 +53,7 @@ class PlayState extends FlxState
 
 	public function pathBetween(a:FlxObject, b:FlxObject):Array<FlxPoint>
 	{
-		var path = tilemap.findPath(a.getPosition(), b.getMidpoint());
+		var path = tilemap.findPath(a.getMidpoint(), b.getMidpoint());
 		return path;
 	}
 
@@ -73,7 +73,7 @@ class PlayState extends FlxState
 		var found:Array<Resource> = [];
 		for (r in resources)
 		{
-			if (r.type == type)
+			if (r.alive && r.type == type)
 			{
 				found.push(r);
 			}
