@@ -249,7 +249,7 @@ class Buddy extends FlxSprite
 				}
 				return false;
 			}))),
-			new StatusAction(BT.wrapFn(moveToTarget), BT.wrapFn((ctx) -> path.cancel()))
+			new StatusAction(BT.wrapFn(moveToTarget))
 		]);
 
 		Registry.register('approachTarget', approachTarget);
@@ -367,20 +367,23 @@ class Buddy extends FlxSprite
 					return getPosition().dist(FlxG.mouse.getWorldPosition()) < 32;
 				}))),
 				new StatusAction("chaseMouse", BT.wrapFn((ctx, delta) -> {
-						var mp = FlxG.mouse.getWorldPosition();
-						var p = getGraphicMidpoint().subtract(mp);
-						if (p.length > 32)
-						{
-							velocity.copyFrom(p).scale(-1).normalize().scale(200);
-						}
-						else
-						{
-							velocity.set();
-						}
-						mp.put();
-						p.put();
-						return RUNNING;
-					}), BT.wrapFn((ctx) -> {velocity.set();}))
+					if (path != null) {
+						path.cancel();
+					}
+					var mp = FlxG.mouse.getWorldPosition();
+					var p = getGraphicMidpoint().subtract(mp);
+					if (p.length > 32)
+					{
+						velocity.copyFrom(p).scale(-1).normalize().scale(200);
+					}
+					else
+					{
+						velocity.set();
+					}
+					mp.put();
+					p.put();
+					return RUNNING;
+				}), BT.wrapFn((ctx) -> {velocity.set();}))
 			]),
 		])));
 		//bt = new BTExecutor(new Subtree('findATarget'));
