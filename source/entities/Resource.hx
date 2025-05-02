@@ -11,6 +11,7 @@ class Resource extends FlxSprite
 	{
 		super(X, Y);
 		this.type = type;
+		immovable = true;
 
 		makeGraphic(16, 16, switch (type)
 		{

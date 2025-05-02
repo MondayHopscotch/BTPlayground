@@ -1,5 +1,6 @@
 package entities;
 
+import bitdecay.behavior.tree.Shorthand;
 import bitdecay.flixel.debug.DebugSuite;
 import bitdecay.flixel.debug.tools.btree.*;
 import entities.Resource.ResType;
@@ -173,8 +174,9 @@ class Buddy extends FlxSprite
 	function initBehavior()
 	{
 		// @formatter:off
+
 		// tree to find a target object
-		var getTarget = new Selector(IN_ORDER, [
+		var getTarget = new Fallback(IN_ORDER, [
 			new Condition("hasTarget", VAR_SET('target')),
 			new StatusAction("setClosestTarget", BT.wrapFn((ctx, delta) ->
 			{
@@ -192,6 +194,9 @@ class Buddy extends FlxSprite
 				var points:Array<FlxPoint> = null;
 				for (resource in objs) {
 					var pathPoints = PlayState.ME.pathBetween(this, resource);
+					if (pathPoints == null) {
+						continue;
+					}
 					var len = 0.0;
 					var lastPoint:FlxPoint = null;
 					for (p in pathPoints) {
@@ -223,21 +228,25 @@ class Buddy extends FlxSprite
 				return FAIL;
 			})),
 		]);
-
 		Registry.register('findATarget', getTarget);
 
+		var isTargetAlive = new Fallback(IN_ORDER, [
+			new Condition('targetAlive', FUNC(BT.wrapFn((ctx) -> {
+				var t:Resource = ctx.get('target');
+				return t != null && t.alive;
+			}))),
+			new Inverter(new RemoveVariable('target'))
+		]);
+		Registry.register('targetAlive', isTargetAlive);
+
 		// tree to get close to target object
-		var approachTarget = new Selector(IN_ORDER, [
+		var approachTarget = new Fallback(IN_ORDER, [
 			new Condition("nearTarget", FUNC(BT.wrapFn((ctx) -> {
 				var target:Resource = ctx.get('target');
 				if (target.overlaps(this)) {
 					ctx.set('resource', target);
 					return true;
 				}
-				// if (target != null && getPosition().dist(target.getPosition()) < 32) {
-				// 	ctx.set('resource', target);
-				// 	return true;
-				// };
 				return false;
 			}))),
 			new StatusAction(BT.wrapFn(moveToTarget), BT.wrapFn((ctx) -> path.cancel()))
@@ -281,6 +290,7 @@ class Buddy extends FlxSprite
 
 		var consumeResource = new Sequence(IN_ORDER, [
 			new Subtree('findATarget'),
+			new Subtree('targetAlive'),
 			new Subtree('approachTarget'),
 			new StatusAction('consume', BT.wrapFn((ctx, delta) -> {
 				var res:Resource = ctx.get('resource');
@@ -297,26 +307,14 @@ class Buddy extends FlxSprite
 					// start interaction
 					interacting = true;
 					res.kill();
-					if (resourceTimer != null) {
-						resourceTimer.cancel();
+					switch (res.type) {
+						case ResType.WATER:
+							water += 10;
+						case ResType.FOOD:
+							food += 12;
 					}
-					resourceTimer = FlxTimer.loop(.5, (loop) -> {
-						trace('timerLoops: ${loop}');
-						if (!interacting) {
-							resourceTimer.cancel();
-							return;
-						}
 
-						switch (res.type) {
-							case ResType.WATER:
-								water += 10;
-							case ResType.FOOD:
-								food += 12;
-						}
-						if (loop == 5) {
-							interacting = false;
-						}
-					}, 5);
+					interacting = false;
 				}
 
 				if (interacting) {
@@ -340,22 +338,31 @@ class Buddy extends FlxSprite
 
 		Registry.register('consumeResource', consumeResource);
 
+		var targetIfPossible = new Fallback(IN_ORDER, [
+			new Condition('desireDoesNotExists', FUNC(BT.wrapFn((ctx) -> {
+				var t:ResType = ctx.get('desire');
+				return PlayState.ME.findObjects(t).length == 0;
+			}))),
+			new Subtree('consumeResource')
+		]);
+		Registry.register('targetIfPossible', targetIfPossible);
+
 		bt = new BTExecutor(new Repeater(FOREVER, new Sequence(IN_ORDER, [
-			new Selector(IN_ORDER, [
+			new Fallback(IN_ORDER, [
 				new Condition("notThirsty", VAR_CMP(WATER, GT(50))),
 				new Sequence(IN_ORDER, [
 					new SetVariable('desire', CONST(ResType.WATER)),
-					new HierarchicalContext(new Subtree('consumeResource'))
+					new HierarchicalContext(new Subtree('targetIfPossible'), 'waterCtx')
 				])
-			]),
-			new Selector(IN_ORDER, [
+			], "thirsty",),
+			new Fallback(IN_ORDER, [
 				new Condition("notHungry", VAR_CMP(FOOD, GT(50))),
 				new Sequence(IN_ORDER, [
 					new SetVariable('desire', CONST(ResType.FOOD)),
-					new HierarchicalContext(new Subtree('consumeResource'))
+					new HierarchicalContext(new Subtree('targetIfPossible'), 'foodCtx')
 				])
-			]),
-			new Selector(IN_ORDER, [
+			], "hungry"),
+			new Fallback(IN_ORDER, [
 				new Condition("atMouse", FUNC(BT.wrapFn((ctx) -> {
 					return getPosition().dist(FlxG.mouse.getWorldPosition()) < 32;
 				}))),
@@ -376,10 +383,33 @@ class Buddy extends FlxSprite
 					}), BT.wrapFn((ctx) -> {velocity.set();}))
 			]),
 		])));
+		//bt = new BTExecutor(new Subtree('findATarget'));
 		bt.init(ctx);
 		#if debug
 		DebugSuite.ME.getTool(BTreeInspector).addTree('buddy', bt);
 		#end
+		
+		// Runs StatusAction until 'killSignal' is set into the map
+		// new Sequence(IN_ORDER, [
+		// 	new Condition('killSignalReceived', VAR_NOT_SET('killSignal')),
+		// 	new StatusAction('mikeAction', BT.wrapFn((ctx, delta) ->
+		// 	{
+		// 		return RUNNING;
+		// 	}))
+		// ]);
+
+		// TODO: remove interrupter as a pattern exists that is nearly equivalent ^
+		// new Interrupter(
+		// 	new Condition('killSignalReceived', VAR_SET('killSignal')),
+		// 	new StatusAction('mikeAction', BT.wrapFn((ctx, delta) -> {
+		// 	return RUNNING;
+		// })));
+
+		// Shorthand.interrupter(
+		// 	new Condition('killSignalReceived', VAR_SET('killSignal')),
+		// 	new StatusAction('mikeAction', BT.wrapFn((ctx, delta) -> {
+		// 	return RUNNING;
+		// })));
 		// @formatter:on
 	}
 }

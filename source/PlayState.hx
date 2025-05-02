@@ -61,6 +61,46 @@ class PlayState extends FlxState
 	{
 		super.update(elapsed);
 
+		if (FlxG.mouse.justPressed)
+		{
+			var deleted = false;
+			for (r in resources)
+			{
+				if (r.overlapsPoint(FlxG.mouse.getWorldPosition()))
+				{
+					r.kill();
+					deleted = true;
+					break;
+				}
+			}
+
+			if (!deleted)
+			{
+				var water = new Resource(WATER, FlxG.mouse.x, FlxG.mouse.y);
+				resources.add(water);
+			}
+		}
+
+		if (FlxG.mouse.justPressedRight)
+		{
+			var deleted = false;
+			for (r in resources)
+			{
+				if (r.overlapsPoint(FlxG.mouse.getWorldPosition()))
+				{
+					r.kill();
+					deleted = true;
+					break;
+				}
+			}
+
+			if (!deleted)
+			{
+				var food = new Resource(FOOD, FlxG.mouse.x, FlxG.mouse.y);
+				resources.add(food);
+			}
+		}
+
 		CollisionUtils.piecewiseCollide(tilemap, buddy);
 		CollisionUtils.piecewiseCollide(buddy, resources, (b, r) ->
 		{
