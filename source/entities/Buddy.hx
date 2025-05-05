@@ -3,6 +3,7 @@ package entities;
 import bitdecay.behavior.tree.Shorthand;
 import bitdecay.flixel.debug.DebugSuite;
 import bitdecay.flixel.debug.tools.btree.*;
+import bitdecay.flixel.debug.tools.draw.DebugDraw;
 import entities.Resource.ResType;
 import flixel.FlxG;
 import flixel.FlxObject;
@@ -55,6 +56,8 @@ class Buddy extends FlxSprite
 		bt.ctx.set(WATER, water);
 
 		bt.process(elapsed);
+
+		DebugSuite.ME.getTool(DebugDraw).drawWorldRect(x - 2, y - 2, width + 4, height + 4);
 	}
 
 	override function draw()
